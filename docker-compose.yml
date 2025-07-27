@@ -5,7 +5,7 @@ services:
       context: .
   
       dockerfile: Dockerfile
-    image: ghcr.io/joshyorko/home-lab-actions:main-0e9b290
+    image: ghcr.io/joshyorko/home-lab-actions:latest
     ports:
       - "4000:8087"  # Exposes Nginx, which now routes "/" to the web UI
       - "443:443"  # Exposes Nginx HTTPS
