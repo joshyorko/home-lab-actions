@@ -82,10 +82,11 @@ RUN action-server import --datadir=/action-server/datadir
 
 EXPOSE 8080 443 80
 
-# Install sudo to allow non-root user to generate certificates
+# Install sudo and openssl to allow non-root user to generate certificates
 USER root
-RUN apt-get update && apt-get install -y sudo && \
-    echo "as-user ALL=(ALL) NOPASSWD: /action-server/generate-certs.sh" >> /etc/sudoers && \
+RUN apt-get update && apt-get install -y sudo openssl && \
+    echo 'Defaults env_keep += "TLS_CRT TLS_KEY SERVER_URL"' | tee -a /etc/sudoers && \
+    echo "as-user ALL=(ALL) NOPASSWD:SETENV: /action-server/generate-certs.sh" | tee -a /etc/sudoers && \
     rm -rf /var/lib/apt/lists/*
 
 USER as-user

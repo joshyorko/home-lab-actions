@@ -14,9 +14,16 @@ services:
       - ./devdata:/action-server/actions/devdata
       - action-server-data:/action-server/datadir
       - /home/kdlocpanda/.rancher:/home/as-user/.rancher
+      - ./certs:/action-server/actions
     restart: unless-stopped
     env_file:
       - .env
+    healthcheck:
+      test: ["CMD", "test", "-f", "/action-server/actions/combined-tls.crt"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
 volumes:
   action-server-data:
