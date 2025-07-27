@@ -1,0 +1,21 @@
+name: home-lab-actions
+services:
+  action-server:
+    build:
+      context: .
+  
+      dockerfile: Dockerfile
+    image: ghcr.io/joshyorko/home-lab-actions:main-0e9b290
+    ports:
+      - "4000:8087"  # Exposes Nginx, which now routes "/" to the web UI
+      - "443:443"  # Exposes Nginx HTTPS
+    volumes:
+      - ./devdata:/action-server/actions/devdata
+      - action-server-data:/action-server/datadir
+      - /home/kdlocpanda/.rancher:/home/as-user/.rancher
+    restart: unless-stopped
+    env_file:
+      - .env
+
+volumes:
+  action-server-data:
