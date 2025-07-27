@@ -1,0 +1,41 @@
+# Exclude files and directories that should not be copied into the Docker image
+# This helps keep the image size small and avoids leaking sensitive or unnecessary data
+
+# VCS and editor files
+.git/
+.gitignore
+*.swp
+*.swo
+
+# OS and IDE artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+__pycache__/
+*.pyc
+
+# Logs and temp files
+*.log
+*.tmp
+logs/
+temp/
+
+# Data and dev artifacts
+certs/
+devdata/
+*.md
+Dockerfile
+README.md
+package.png
+
+# Exclude test, build, and other non-runtime files
+*.bak
+*.old
+*.test
+
+# Exclude large files or folders not needed at runtime
+input_download_cluster_kubeconfig.json
+input_list_rancher_contexts.json
+input_list_vms.json
+input_set_rancher_context.json
+chat-files/
