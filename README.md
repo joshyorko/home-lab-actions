@@ -74,4 +74,6 @@ Check [Action Server](https://github.com/Sema4AI/actions/tree/master/action_serv
 
 ## Contributors
 
-[![Contributors](https://contrib.rocks/image?repo=joshyorko/home-lab-actions)](https://github.com/joshyorko/home-lab-actions/graphs/contributors)
+### Contributors
+
+![Contributors](https://contrib.nn.ci/api?repo=joshyorko/home-lab-actions)
