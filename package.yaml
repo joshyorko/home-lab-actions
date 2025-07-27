@@ -2,7 +2,7 @@
 name: home-lab-actions
 
 # Required: A description of what's in the action package.
-description: Action package description
+description: AI Actions for managing Kubernetes clusters and Harvester VMs in your home lab environment.
 
 # Package version number, recommend using semver.org
 version: 0.0.1

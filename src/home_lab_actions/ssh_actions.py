@@ -16,15 +16,20 @@ logger = logging.getLogger(__name__)
 
 
 
+@action
 def execute_command_on_vision(command: str) -> Response[str]:
-    """Execute a command on the Vision system via SSH connection.
+    """
+    Executes a shell command on the remote Vision system via SSH.
 
     Args:
-        command (str): The command to execute on the Vision system
+        command (str): The shell command to execute.
 
     Returns:
-        Response[str]: A response indicating the execution status
+        Response[str]: The output of the command, or an error message if execution fails.
+
+    This action is useful for remotely managing or querying the Vision system from an automation workflow.
     """
+
     host = os.getenv("VISION_IP")
     if not host:
         return Response(error="VISION_IP environment variable not set")
@@ -33,13 +38,10 @@ def execute_command_on_vision(command: str) -> Response[str]:
     username = os.getenv("VISION_USERNAME", "kdlocpanda")
     password = os.getenv("PASSWORD")
     ssh_key_env = os.getenv("SSH_KEY")
-    tls_crt_env = os.getenv("TLS_CRT")
-
     key_content = ssh_key_env.replace('\\n', '\n') if ssh_key_env else None
-    tls_crt_content = tls_crt_env.replace('\\n', '\n') if tls_crt_env else None
 
     output, error = ssh_execute_command(
-        host, port, username, password, key_content, command, tls_crt_content
+        host, port, username, password, key_content, command
     )
 
     if error:
@@ -54,22 +56,8 @@ def ssh_execute_command(
     password: str | None = None,
     key_content: str | None = None,
     command: str = "",
-    tls_crt_content: str | None = None,
 ) -> tuple[str, str]:
-    """
-    SSH into a remote device and execute a command.
-
-    Parameters:
-        host (str): The hostname or IP address of the remote device.
-        port (int): The SSH port (default is usually 22).
-        username (str): The SSH username.
-        password (str, optional): The SSH password (if using password-based auth).
-        key_filepath (str, optional): Path to the private key file (if using key-based auth).
-        command (str): The command to execute on the remote device.
-
-    Returns:
-        tuple: A tuple (output, error) containing the command's output and error messages.
-    """
+    """Execute a command on a remote system via SSH."""
     try:
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -100,9 +88,6 @@ def ssh_execute_command(
             )
         else:
             return "", "Authentication method required (key or password)"
-
-        # If you need to use tls_crt_content, add logic here to use it for TLS connections
-        # For now, just pass it through or use as needed in your workflow
 
         stdin, stdout, stderr = client.exec_command(command)
         output = stdout.read().decode("utf-8")
