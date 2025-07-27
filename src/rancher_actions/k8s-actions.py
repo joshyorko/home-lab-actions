@@ -1,27 +1,124 @@
-"""
-Kubernetes Actions for Home Lab
-
-This module provides AI Actions to interact with Kubernetes clusters.
-It uses the official Python Kubernetes client to manage pods, deployments, and other resources.
-"""
-
 from sema4ai.actions import action
 from kubernetes import client, config
 from typing import Optional
 import logging
 import os
+import shutil
 import subprocess
 from dotenv import load_dotenv
 import json
 import re
 from .models import (
     PodResponse, PodLogResponse, NamespaceResponse,
-    ClusterInfoResponse, PodDeleteResponse, VMResponse, VMListResponse,DeploymentListResponse,
+    ClusterInfoResponse, VMResponse, VMListResponse,DeploymentListResponse,
     RancherContextResponse, KubeConfigResponse, KubeControlResponse,RancherResponseSet
 )
 
+# --- Rancher login/context helpers ---
+
+def _require_bin(name: str):
+    """Ensure required CLI is present in PATH."""
+    if not shutil.which(name):
+        raise RuntimeError(f"Required binary '{name}' not found in PATH")
+
+def ensure_env():
+    url = os.getenv("RANCHER_URL")
+    token = os.getenv("RANCHER_TOKEN")
+    if not url or not token:
+        raise RuntimeError("RANCHER_URL and RANCHER_TOKEN are required")
+    return url, token
+
+def _augment_login_flags(cmd: list[str]) -> list[str]:
+    """
+    Optionally append TLS flags based on env:
+      - RANCHER_INSECURE=true  -> --insecure
+      - RANCHER_CACERTS=/path  -> --cacerts /path
+    """
+    insecure = os.getenv("RANCHER_INSECURE", "").lower() in ("1", "true", "yes")
+    cacerts = os.getenv("RANCHER_CACERTS")
+    if insecure:
+        cmd.append("--insecure")
+    if cacerts:
+        cmd += ["--cacerts", cacerts]
+    return cmd
+
+def _login_cmd(url: str, token: str, context: Optional[str] = None) -> list[str]:
+    cmd = ["rancher", "login", url, "--token", token]
+    if context:
+        cmd += ["--context", context]
+    return _augment_login_flags(cmd)
+
+def rancher_login_no_context():
+    _require_bin("rancher")
+    url, token = ensure_env()
+    subprocess.run(
+        _login_cmd(url, token),
+        check=True, capture_output=True, text=True, timeout=60
+    )
+
+def is_cli_initialized() -> bool:
+    return os.path.exists(os.path.expanduser("~/.rancher/cli2.json"))
+
+def ensure_rancher_login():
+    _require_bin("rancher")
+    if not is_cli_initialized():
+        rancher_login_no_context()
+
+def resolve_context(name_or_id: str) -> str:
+    # If it's already a project id, return as-is.
+    if ":" in name_or_id:
+        return name_or_id.strip()
+    ensure_rancher_login()
+    cfg = os.path.expanduser("~/.rancher/cli2.json")
+    with open(cfg) as f:
+        data = json.load(f)
+    servers = data.get("Servers", {})
+    preferred = [data.get("CurrentServer")] if data.get("CurrentServer") else []
+    for server_name in preferred + list(servers.keys()):
+        s = servers.get(server_name)
+        if not s:
+            continue
+        proj = s.get("project")
+        if proj and server_name.lower() == name_or_id.lower():
+            return proj
+    for server_name, s in servers.items():
+        if s.get("project") and name_or_id.lower() in server_name.lower():
+            return s["project"]
+    raise RuntimeError(f"Context '{name_or_id}' not found. Run an interactive 'rancher context switch' to inspect available items.")
+
+def select_context(project_id: str):
+    _require_bin("rancher")
+    url, token = ensure_env()
+    subprocess.run(
+        _login_cmd(url, token, context=project_id),
+        check=True, capture_output=True, text=True, timeout=60
+    )
+    path = os.path.expanduser("~/.rancher/selected_context")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(project_id.strip())
+    os.replace(tmp, path)
+
+def _current_context_from_file() -> Optional[str]:
+    f = os.path.expanduser("~/.rancher/selected_context")
+    if os.path.exists(f):
+        with open(f, "r") as fh:
+            return fh.read().strip() or None
+    return None
+
+def _rancher_kubectl(namespace: str, kubectl_args: list[str], context: Optional[str]=None) -> str:
+    ensure_rancher_login()
+    ctx = context or _current_context_from_file()
+    url, token = ensure_env()
+    subprocess.run(_login_cmd(url, token, context=ctx),
+                   check=True, capture_output=True, text=True)
+    cmd = ["rancher", "kubectl", "-n", namespace] + kubectl_args
+    result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+    return result.stdout.strip()
+
 # Explicitly load the .env file from the specified path
-load_dotenv("/home/kdlocpanda/second_brain/Areas/RPA/home-lab-actions/.env")
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +135,8 @@ def _load_config():
         logger.info("Loaded in-cluster Kubernetes configuration")
     except config.ConfigException:
         try:
+            # Ensure subprocesses and client agree on kubeconfig path.
+            os.environ.setdefault("KUBECONFIG", _KUBECONFIG_PATH)
             config.load_kube_config(config_file=_KUBECONFIG_PATH)
             logger.info(f"Loaded Kubernetes configuration from: {_KUBECONFIG_PATH}")
         except Exception as e:
@@ -286,6 +385,8 @@ def get_cluster_info() -> ClusterInfoResponse:
         
         try:
             cmd = ["kubectl", "cluster-info"]
+            # Ensure kubectl exists if we call it directly
+            _require_bin("kubectl")
             cluster_info_result = subprocess.run(cmd, check=True, capture_output=True, text=True)
             cleaned_output = _strip_ansi_codes(cluster_info_result.stdout)
             for line in cleaned_output.splitlines():
@@ -436,18 +537,7 @@ _CURRENT_RANCHER_CONTEXT = None
 def set_rancher_context(project_id_or_name: str) -> RancherResponseSet:
     """
     Set the Rancher context persistently for all Rancher CLI operations.
-
-    If the user provides a name (e.g., "vision") instead of a project_id (e.g., "c-xxxx:p-yyyy"),
-    this function will always list all Rancher contexts, search for a matching name (case-insensitive),
-    and use its project_id. If the name is not found, it will return an error and show available context names.
-    Do not assume the user is providing a project_id unless it contains a colon (":").
-
-    Example usage:
-        set_rancher_context("vision")
-        # This will search for a context named "vision" and set its project_id as the context.
-
-        set_rancher_context("c-xxxx:p-yyyy")
-        # This will set the context directly if a project_id is provided.
+    Accepts either a name or a project_id (c-...:p-...).
 
     Args:
         project_id_or_name (str): The Rancher project ID (e.g., "c-xxxx:p-yyyy") or the context name (e.g., "vision").
@@ -456,59 +546,20 @@ def set_rancher_context(project_id_or_name: str) -> RancherResponseSet:
     Returns:
         RancherResponseSet: Response indicating the result of setting the Rancher context.
     """
-    global _CURRENT_RANCHER_CONTEXT
-    # If the input looks like a project_id (contains a colon), use it directly, else search by name
-    if ":" not in project_id_or_name:
-        # List all contexts and try to match by name (case-insensitive)
-        try:
-            contexts_resp = list_rancher_contexts()
-            if hasattr(contexts_resp, "contexts"):
-                contexts = contexts_resp.contexts
-            else:
-                return RancherResponseSet(
-                    result=None,
-                    error="Could not retrieve Rancher contexts.",
-                    context=None
-                )
-            match = None
-            for ctx in contexts:
-                if ctx["name"].lower() == project_id_or_name.lower():
-                    match = ctx
-                    break
-            if not match:
-                available = ", ".join([ctx["name"] for ctx in contexts])
-                return RancherResponseSet(
-                    result=None,
-                    error=f"No Rancher context found with name '{project_id_or_name}'. Available: {available}",
-                    context=None
-                )
-            project_id = match["project_id"]
-        except Exception as e:
-            return RancherResponseSet(
-                result=None,
-                error=f"Failed to list Rancher contexts: {e}",
-                context=None
-            )
-    else:
-        project_id = project_id_or_name
-    _CURRENT_RANCHER_CONTEXT = project_id
-    # Persist context to file
-    context_file = os.path.expanduser("~/.rancher/selected_context")
     try:
-        os.makedirs(os.path.dirname(context_file), exist_ok=True)
-        with open(context_file, "w") as f:
-            f.write(project_id.strip())
+        pid = resolve_context(project_id_or_name)
+        select_context(pid)
+        return RancherResponseSet(
+            result=f"Rancher context set to {pid} (state=CONTEXT_SELECTED)",
+            error=None,
+            context=pid
+        )
     except Exception as e:
         return RancherResponseSet(
             result=None,
-            error=f"Failed to persist Rancher context: {e}",
-            context=project_id
+            error=f"{str(e)}\nNext suggestion: Run 'rancher context switch' interactively and paste the selected c-..:p-.. here.",
+            context=None
         )
-    return RancherResponseSet(
-        result=f"Rancher context set to: {project_id}",
-        error=None,
-        context=project_id
-    )
 
 def get_rancher_context() -> str:
     """
@@ -525,41 +576,6 @@ def get_rancher_context() -> str:
                 _CURRENT_RANCHER_CONTEXT = context
                 return context
     raise RuntimeError("No Rancher context set. Use set_rancher_context(context) to set it.")
-
-def _get_rancher_auth_args(context: Optional[str] = None) -> list[str]:
-    """
-    Get Rancher authentication arguments from environment variables, using the provided context or the global one.
-    Returns command arguments for rancher login, ready to use.
-    """
-    rancher_url = os.getenv("RANCHER_URL")
-    rancher_token = os.getenv("RANCHER_TOKEN")
-    rancher_context = context if context else get_rancher_context()
-    if not rancher_url or not rancher_token or not rancher_context:
-        raise RuntimeError("Missing required environment variables: RANCHER_URL, RANCHER_TOKEN, and RANCHER_CONTEXT. Set these in your .env file for Docker container deployment. Example: RANCHER_CONTEXT=c-h9sm2:p-nbpv8")
-    return ["login", rancher_url, "--token", rancher_token, "--context", rancher_context]
-
-def _rancher_kubectl(namespace: str, kubectl_args: list[str]) -> str:
-    """
-    Execute `rancher kubectl` with environment-based authentication.
-    Authenticates fresh for each command - ideal for containerized deployments.
-    Raises subprocess.CalledProcessError on non-zero exit.
-    """
-    try:
-        # Get auth args from environment
-        auth_args = _get_rancher_auth_args()
-        
-        # First, authenticate (output redirected to avoid noise)
-        login_cmd = ["rancher"] + auth_args
-        subprocess.run(login_cmd, check=True, capture_output=True, text=True)
-        
-        # Then execute the kubectl command
-        cmd = ["rancher", "kubectl", "-n", namespace] + kubectl_args
-        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        return result.stdout.strip()
-        
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Rancher command failed: {e.stderr}")
-        raise RuntimeError(f"Rancher operation failed: {e.stderr}")
 
 def _vm_patch_payload(start: bool) -> str:
     """
@@ -697,55 +713,55 @@ def list_rancher_contexts() -> RancherContextResponse:
         )
 
 @action(is_consequential=True)
-def download_cluster_kubeconfig(cluster_name: str, kubeconfig_path: str = "~/.kube/config") -> KubeConfigResponse:
+def download_cluster_kubeconfig(cluster_name: str, kubeconfig_path: str = "~/.kube/config", context: Optional[str]=None) -> KubeConfigResponse:
     """
     Download the Kubeconfig for a Harvester cluster from Rancher using the Rancher CLI and append it to the specified local file. Sets the module-level kubeconfig path for future use.
 
     Args:
         cluster_name (str): The name of the Harvester cluster to download the kubeconfig for.
-        kubeconfig_path (str, optional): The local file path to append the kubeconfig to. Defaults to "~/.kube/config".
+        kubeconfig_path (str, optional): The local file path to write the kubeconfig to. Supports {cluster} token.
+            Defaults to "~/.kube/rancher-{cluster}.yaml".
+        context (str, optional): The Rancher project/context ID to use for login. If not provided, uses the persisted context.
 
     Returns:
         KubeConfigResponse: Result message indicating success or failure.
     """
     global _KUBECONFIG_PATH
     try:
-        # Authenticate with Rancher using credentials from environment variables.
-        auth_args = _get_rancher_auth_args()
-        login_cmd = ["rancher"] + auth_args
-        subprocess.run(login_cmd, check=True, capture_output=True, text=True, timeout=60)
-
-        # Command to generate the kubeconfig for the specified cluster.
-        kubeconfig_cmd = ["rancher", "clusters", "kubeconfig", cluster_name]
-        result = subprocess.run(kubeconfig_cmd, check=True, capture_output=True, text=True, timeout=60)
+        ensure_rancher_login()
+        url, token = ensure_env()
+        # Login (optionally with context). No kubectl sanity call here.
+        subprocess.run(
+            _login_cmd(url, token, context=context),
+            check=True, capture_output=True, text=True, timeout=60
+        )
+        # Fetch kubeconfig for the cluster.
+        result = subprocess.run(
+            ["rancher", "clusters", "kubeconfig", cluster_name],
+            check=True, capture_output=True, text=True, timeout=60
+        )
         kubeconfig_content = result.stdout
-
-        # Expand user path (e.g., '~') and create directory if it doesn't exist.
-        expanded_path = os.path.expanduser(kubeconfig_path)
+        expanded_path = os.path.expanduser(kubeconfig_path.format(cluster=cluster_name))
         os.makedirs(os.path.dirname(expanded_path), exist_ok=True)
+        tmp = expanded_path + ".tmp"
+        with open(tmp, "w") as f:
+            f.write(kubeconfig_content)
+        os.replace(tmp, expanded_path)
 
-        # Append the kubeconfig content to the specified file.
-        with open(expanded_path, "a") as f:
-            f.write("\n" + kubeconfig_content)
-        
-        # Set module-level kubeconfig path for all future k8s API calls
         _KUBECONFIG_PATH = expanded_path
+        os.environ["KUBECONFIG"] = expanded_path
         logger.info(f"Set _KUBECONFIG_PATH to '{expanded_path}' for subsequent Kubernetes API calls.")
         logger.info(f"Kubeconfig for cluster '{cluster_name}' successfully appended to '{expanded_path}'")
-        # Return a clean, human-readable message
         return KubeConfigResponse(
-            result="SUCCESS: KUBECONFIG DOWNLOADED",
+            result=f"SUCCESS: KUBECONFIG DOWNLOADED (state=KUBECONFIG_READY, kubeconfig={expanded_path})",
             cluster_name=cluster_name,
             kubeconfig_path=expanded_path
         )
-
     except subprocess.CalledProcessError as e:
-        # Handle errors from the Rancher CLI command.
         error_message = f"Failed to download kubeconfig for cluster '{cluster_name}': {e.stderr}"
         logger.error(error_message)
         return KubeConfigResponse(error=error_message)
     except Exception as e:
-        # Handle other potential errors (e.g., file permissions).
         error_message = f"An unexpected error occurred while downloading kubeconfig for '{cluster_name}': {str(e)}"
         logger.error(error_message)
         return KubeConfigResponse(error=error_message)
