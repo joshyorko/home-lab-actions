@@ -9,6 +9,7 @@ services:
     ports:
       - "4000:8087"  # Exposes Nginx, which now routes "/" to the web UI
       - "443:443"  # Exposes Nginx HTTPS
+      - "80:80"    # Exposes Nginx HTTP
     volumes:
       - ./devdata:/action-server/actions/devdata
       - action-server-data:/action-server/datadir

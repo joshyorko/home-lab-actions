@@ -71,16 +71,23 @@ COPY . .
 
 # Set correct ownership and permissions for SSH key
 
-#COPY combined-tls.crt /action-server/actions/combined-tls.crt
-#COPY tls.key /action-server/actions/tls.key
-#RUN chown as-user:as-user /action-server/actions/combined-tls.crt /action-server/actions/tls.key && \
-#    chmod 600 /action-server/actions/combined-tls.crt /action-server/actions/tls.key
+# Add script to generate TLS certificates from environment variables
+COPY generate-certs.sh /action-server/generate-certs.sh
+RUN chmod +x /action-server/generate-certs.sh
 
 
 USER as-user
 
 RUN action-server import --datadir=/action-server/datadir
 
-EXPOSE 8080
+EXPOSE 8080 443 80
+
+# Install sudo to allow non-root user to generate certificates
+USER root
+RUN apt-get update && apt-get install -y sudo && \
+    echo "as-user ALL=(ALL) NOPASSWD: /action-server/generate-certs.sh" >> /etc/sudoers && \
+    rm -rf /var/lib/apt/lists/*
+
+USER as-user
 
 CMD ["/usr/bin/supervisord"]
