@@ -1,0 +1,21 @@
+{
+    "inputs": [
+        {
+            "inputName": "input-1",
+            "inputValue": {
+                "namespace": "default"
+            }
+        }
+    ],
+    "metadata": {
+        "actionName": "list_vms",
+        "actionRelativePath": "src/rancher_actions/k8s-actions.py",
+        "schemaDescription": [
+            "namespace: string: The namespace to list VMs from. Defaults to \"default\"."
+        ],
+        "managedParamsSchemaDescription": {},
+        "inputFileVersion": "v3",
+        "kind": "action",
+        "actionSignature": "action/args: \"namespace: str='default'\""
+    }
+}
