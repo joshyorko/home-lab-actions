@@ -71,10 +71,10 @@ COPY . .
 
 # Set correct ownership and permissions for SSH key
 
-COPY combined-tls.crt /action-server/actions/combined-tls.crt
-COPY tls.key /action-server/actions/tls.key
-RUN chown as-user:as-user /action-server/actions/combined-tls.crt /action-server/actions/tls.key && \
-    chmod 600 /action-server/actions/combined-tls.crt /action-server/actions/tls.key
+#COPY combined-tls.crt /action-server/actions/combined-tls.crt
+#COPY tls.key /action-server/actions/tls.key
+#RUN chown as-user:as-user /action-server/actions/combined-tls.crt /action-server/actions/tls.key && \
+#    chmod 600 /action-server/actions/combined-tls.crt /action-server/actions/tls.key
 
 
 USER as-user
