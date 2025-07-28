@@ -11,10 +11,10 @@ services:
       - "443:443"  # Exposes Nginx HTTPS
       - "80:80"    # Exposes Nginx HTTP
     volumes:
-      - ./devdata:/action-server/actions/devdata:rw
-      - action-server-data:/action-server/datadir:rw
-      - /home/kdlocpanda/.rancher:/home/as-user/.rancher:rw
-      - ./certs:/action-server/actions:rw
+      - ./devdata:/action-server/actions/devdata
+      - action-server-data:/action-server/datadir
+      - /home/kdlocpanda/.rancher:/home/as-user/.rancher
+      - ./certs:/action-server/actions/certs
     restart: unless-stopped
     env_file:
       - .env
@@ -26,5 +26,6 @@ services:
       start_period: 10s
 
 volumes:
+  devdata:
   action-server-data:
   certs:
