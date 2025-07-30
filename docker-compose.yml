@@ -23,7 +23,12 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
+    networks:
+      - llm-network
 
+networks:
+  llm-network:
+    driver: bridge
 volumes:
   action-server-data:
   certs:

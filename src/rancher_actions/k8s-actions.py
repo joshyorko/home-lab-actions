@@ -427,7 +427,7 @@ def list_vms(namespace: str = "default") -> VMListResponse:
     It shows the VM name, status (Running/Stopped), and readiness.
 
     Hint: To list VMs for a different Rancher context (project/cluster), use set_rancher_context(project_id) before calling this function.
-    Example: If you want to list VMs for the context named "arc-reactor", first find its project_id using list_rancher_contexts(), then call set_rancher_context(project_id) with the project_id for "arc-reactor", and finally call list_vms().
+    Example: If you want to list VMs for the context named "arc-reactor", first find its project_id using list_all_rancher_contexts(), then call set_rancher_context(project_id) with the project_id for "arc-reactor", and finally call list_vms().
 
     Args:
         namespace (str, optional): The namespace to list VMs from. Defaults to "default".
@@ -470,7 +470,7 @@ def list_vms(namespace: str = "default") -> VMListResponse:
 
 
 @action(is_consequential=False)
-def list_rancher_contexts() -> RancherContextResponse:
+def list_all_rancher_contexts() -> RancherContextResponse:
     """
     List all available Rancher contexts (project IDs) by parsing the Rancher CLI config file.
 
@@ -515,6 +515,7 @@ def list_rancher_contexts() -> RancherContextResponse:
         return RancherContextResponse(error=error_msg, contexts=[])
 
 
+
 @action(is_consequential=True)
 def download_cluster_kubeconfig(
     cluster_name: str, context: Optional[str] = None
@@ -542,7 +543,7 @@ def download_cluster_kubeconfig(
         
         # Always ensure we have a context - use current if not provided
         if not context:
-            context = rancher_tools.get_current_context()
+            context = rancher_tools._current_context_from_file()
         
         subprocess.run(
             rancher_tools._login_cmd(url, token, context=context),
