@@ -539,6 +539,11 @@ def download_cluster_kubeconfig(
     try:
         rancher_tools.ensure_rancher_login()
         url, token = rancher_tools.ensure_env()
+        
+        # Always ensure we have a context - use current if not provided
+        if not context:
+            context = rancher_tools.get_current_context()
+        
         subprocess.run(
             rancher_tools._login_cmd(url, token, context=context),
             check=True,
