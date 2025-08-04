@@ -421,19 +421,10 @@ def set_rancher_context(project_id_or_name: str) -> RancherResponseSet:
 @action(is_consequential=False)
 def list_vms(namespace: str = "default") -> VMListResponse:
     """
-    List all virtual machines (VMs) in the specified namespace using Rancher kubectl.
-
-    This action retrieves a list of Harvester or KubeVirt VMs, not Kubernetes pods or namespaces.
-    It shows the VM name, status (Running/Stopped), and readiness.
-
-    Hint: To list VMs for a different Rancher context (project/cluster), use set_rancher_context(project_id) before calling this function.
-    Example: If you want to list VMs for the context named "arc-reactor", first find its project_id using list_all_rancher_contexts(), then call set_rancher_context(project_id) with the project_id for "arc-reactor", and finally call list_vms().
-
+    List all virtual machines (VMs) in the given namespace using Rancher kubectl. Returns VM name, status, and readiness.
+    
     Args:
         namespace (str, optional): The namespace to list VMs from. Defaults to "default".
-
-    Returns:
-        VMListResponse: A formatted list of VMs with their status.
     """
     try:
         output = rancher_tools._rancher_kubectl(namespace, ["get", "vms"])
@@ -521,20 +512,11 @@ def download_cluster_kubeconfig(
     cluster_name: str, context: Optional[str] = None
 ) -> KubeConfigResponse:
     """
-    Download the kubeconfig file for a specified Rancher-managed Kubernetes cluster.
-
-    This action uses the Rancher CLI to fetch the kubeconfig for the given cluster name,
-    optionally using a specific Rancher context (project/cluster). The downloaded kubeconfig
-    is saved to the provided path, which defaults to ~/.kube/config.
-
+    Download the kubeconfig file for a Rancher-managed Kubernetes cluster using the Rancher CLI. Saves to ~/.kube/config by default.
+    
     Args:
-        cluster_name (str): The name of the Rancher cluster to fetch kubeconfig for.
-        kubeconfig_path (str, optional): The path to save the kubeconfig file. Defaults to "~/.kube/config".
-            You may use "{cluster}" in the path to substitute the cluster name.
+        cluster_name (str): The name of the Rancher cluster.
         context (str, optional): The Rancher context (project ID) to use. If not provided, uses the current context.
-
-    Returns:
-        KubeConfigResponse: Result message and path to the downloaded kubeconfig, or error details.
     """
     global _KUBECONFIG_PATH
     try:

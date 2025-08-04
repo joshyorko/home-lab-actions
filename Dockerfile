@@ -21,7 +21,7 @@ RUN tar -xzf rancher-cli.tar.gz \
     && rm -rf rancher-cli.tar.gz rancher-v2.11.3
 
 # Download Action Server
-ADD https://cdn.sema4.ai/action-server/releases/2.13.1/linux64/action-server /usr/local/bin/action-server
+ADD https://cdn.sema4.ai/action-server/releases/2.14.0/linux64/action-server /usr/local/bin/action-server
 RUN chmod +x /usr/local/bin/action-server
 
 # Runtime stage - minimal image with only runtime dependencies
