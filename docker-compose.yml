@@ -1,10 +1,9 @@
 name: home-lab-actions
 services:
   action-server:
-#    build:
- #     context: .
-  
-  #    dockerfile: Dockerfile
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: ghcr.io/joshyorko/home-lab-actions:latest
     ports:
       - "4000:8087"  # Exposes Nginx, which now routes "/" to the web UI
